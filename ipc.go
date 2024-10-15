@@ -22,7 +22,7 @@ type UdsIpcOpts struct {
 
 type msginqueue struct {
 	msg    IMessage
-	waiter chan struct{}
+	waiter chan error
 }
 
 type UdsIpc struct {
@@ -32,31 +32,38 @@ type UdsIpc struct {
 	rwlock   sync.RWMutex
 	types    map[string]reflect.Type
 	msgqueue chan msginqueue
+	clis     map[int64]*IpcConnInMain
 
 	onmsgfnc func(msg IMessage)
 }
 
 func NewUnixIpc(opts UdsIpcOpts) *UdsIpc {
-	return &UdsIpc{opts: opts}
+	if opts.PingStepInMills == 0 {
+		opts.PingStepInMills = 100
+	}
+	if opts.PingStepInMills < 10 {
+		opts.PingStepInMills = 10
+	}
 
+	return &UdsIpc{
+		opts:     opts,
+		types:    make(map[string]reflect.Type),
+		msgqueue: make(chan msginqueue),
+		clis:     map[int64]*IpcConnInMain{},
+	}
 }
 
 func (*UdsIpc) registertype(typ reflect.Type) string {
-	fmt.Println(typ.Name(), typ.PkgPath())
-	return ""
+	return fmt.Sprintf("%s:%s", typ.PkgPath(), typ.Name())
 }
 
 type IpcConnInMain struct {
-	rw interface {
+	conn net.Conn
+	rw   interface {
 		io.ReadWriter
 		Flush() error
 	}
 	lastping int64
-}
-
-type IpcMainStatus struct {
-	rw    sync.RWMutex
-	conns map[uint64]*IpcConnInMain
 }
 
 var (
@@ -80,16 +87,12 @@ func (ipc *UdsIpc) dial() (net.Conn, error) {
 }
 
 func (ipc *UdsIpc) listen() error {
-	serv, err := net.Listen("unix", ipc.opts.FilePath)
-	if err != nil {
-		err = os.Remove(ipc.opts.FilePath)
-		if err != nil {
-			return err
-		}
-		serv, err = net.Listen("unix", ipc.opts.FilePath)
+	_, err := os.Stat(ipc.opts.FilePath)
+	if err == nil {
+		return errors.New("sock file exists")
 	}
-
-	if err != nil {
+	serv, err := net.Listen("unix", ipc.opts.FilePath)
+	if err == nil {
 		go ipc.servemain(serv)
 	}
 	return err
@@ -100,8 +103,10 @@ func (ipc *UdsIpc) Run() {
 		ipc.listen()
 		c, e := ipc.dial()
 		if e != nil {
+			os.Remove(ipc.opts.FilePath)
 			continue
 		}
-		ipc.asclient(c)
+		ace := ipc.asclient(c)
+		fmt.Println("ACE:", ace)
 	}
 }

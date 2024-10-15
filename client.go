@@ -2,7 +2,10 @@ package udsipc
 
 import (
 	"bufio"
+	"fmt"
 	"net"
+	"os"
+	"reflect"
 	"sync/atomic"
 	"time"
 )
@@ -26,8 +29,8 @@ func (ipc *UdsIpc) asclient(c net.Conn) *IpcError {
 	}
 
 	var lastpingat = time.Now().UnixMilli()
-	var pingstep = ipc.opts.PingStepInMills
-	var pinged = int32(0)
+	var max_ping_step = ipc.opts.PingStepInMills * 2
+	var ticker = time.NewTicker(time.Millisecond * time.Duration(ipc.opts.PingStepInMills))
 
 	var readerrchan = make(chan error)
 
@@ -42,16 +45,26 @@ func (ipc *UdsIpc) asclient(c net.Conn) *IpcError {
 			}
 			if rpack.flags&FlagIsPing != 0 {
 				atomic.StoreInt64(&lastpingat, time.Now().UnixMilli())
-				atomic.StoreInt32(&pinged, 0)
+				fmt.Println("Cli: ping from main", os.Getpid())
 				continue
 			}
 
-			var playload = make([]byte, rpack.plyload.Len())
-			copy(playload, rpack.plyload.Bytes())
-			go ipc.onmsgfnc(playload)
+			tpy, ok := ipc.types[rpack.eventname]
+			if !ok {
+				continue
+			}
+
+			msg := reflect.New(tpy).Interface().(IMessage)
+			err = msg.FromBuffer(rpack.plyload)
+			if err != nil {
+				break
+			}
+			go ipc.onmsgfnc(msg)
 		}
 		readerrchan <- err
 	}()
+
+	fmt.Println("Cli Conn OK")
 
 	wpack := packpool.Get().(*pack)
 	defer packpool.Put(wpack)
@@ -68,22 +81,22 @@ func (ipc *UdsIpc) asclient(c net.Conn) *IpcError {
 				if err != nil {
 					return &IpcError{kind: IpcErrorMakePackFailed, err: err}
 				}
+
 				err = ipc.sendpack(rw, wpack)
+				if msgiq.waiter != nil {
+					msgiq.waiter <- err
+				}
+
 				if err != nil {
 					return &IpcError{kind: IpcErrorConnWriteFailed, err: err}
 				}
-				if msgiq.waiter != nil {
-					msgiq.waiter <- struct{}{}
-				}
 				break
 			}
-		default:
+		case <-ticker.C:
 			{
-				if time.Now().UnixMilli()-atomic.LoadInt64(&lastpingat) < pingstep {
-					continue
-				}
-
-				if !atomic.CompareAndSwapInt32(&pinged, 0, 1) {
+				lastpingatv := atomic.LoadInt64(&lastpingat)
+				now := time.Now().UnixMilli()
+				if now-lastpingatv > max_ping_step {
 					return &IpcError{kind: IpcErrorPingTimeout}
 				}
 

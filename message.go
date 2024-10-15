@@ -180,6 +180,7 @@ func (ipc *UdsIpc) sendpack(w IFlushWriter, src *pack) error {
 }
 
 func (ipc *UdsIpc) mkhandshakepack(dest *pack) *pack {
+	dest.flags |= FlagIsHandshake
 	pid := strconv.FormatInt(int64(os.Getpid()), 10)
 	hv := md5.New()
 	hv.Write([]byte(pid))
@@ -189,11 +190,7 @@ func (ipc *UdsIpc) mkhandshakepack(dest *pack) *pack {
 }
 
 func (ipc *UdsIpc) mkpingpack(dest *pack) {
-	dest.flags = FlagIsPing
-}
-
-func (ipc *UdsIpc) mkhandshakeresppack(dest *pack) {
-	dest.flags = FlagIsHandshake
+	dest.flags |= FlagIsPing
 }
 
 func (ipc *UdsIpc) mkmessagepack(dest *pack, msg IMessage) error {
@@ -203,4 +200,21 @@ func (ipc *UdsIpc) mkmessagepack(dest *pack, msg IMessage) error {
 
 	dest.eventname = name
 	return msg.ToBuffer(dest.plyload)
+}
+
+func (ipc *UdsIpc) SendMessageSync(msg IMessage) error {
+	ec := make(chan error)
+	ipc.msgqueue <- msginqueue{msg: msg, waiter: ec}
+	return <-ec
+}
+
+func (ipc *UdsIpc) SendMessage(msg IMessage, callback func(error)) {
+	if callback == nil {
+		ipc.msgqueue <- msginqueue{msg: msg}
+		return
+	}
+
+	ec := make(chan error)
+	ipc.msgqueue <- msginqueue{msg: msg, waiter: ec}
+	go callback(<-ec)
 }
