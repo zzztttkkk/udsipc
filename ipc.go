@@ -18,6 +18,7 @@ type UdsIpcOpts struct {
 	EnableCompression bool
 	CompressionLimit  int
 	PingStepInMills   int64
+	OnLog             func(level LogLevel, timeunix int64, msg string, args ...any)
 }
 
 type msginqueue struct {

@@ -59,8 +59,6 @@ func timeout[Out any](du time.Duration, fnc func() *Out) (*Out, error) {
 }
 
 func (ipc *UdsIpc) serveclient(c net.Conn) {
-	fmt.Println(">> new conn")
-
 	defer c.Close()
 
 	rw := bufio.NewReadWriter(bufio.NewReader(c), bufio.NewWriter(c))
@@ -106,7 +104,7 @@ func (ipc *UdsIpc) serveclient(c net.Conn) {
 	ipc.clis[pid] = conninmain
 	ipc.rwlock.Unlock()
 
-	fmt.Println("Server Conn OK", pid)
+	ipc.log(LogLevelInfo, "Server Conn OK", pid)
 
 	defer func() {
 		ipc.rwlock.Lock()
@@ -134,7 +132,7 @@ func (ipc *UdsIpc) serveclient(c net.Conn) {
 			}
 			if tmppack.flags&FlagIsPing != 0 {
 				atomic.StoreInt64(&conninmain.lastping, time.Now().UnixMilli())
-				fmt.Println("Server: ping from cli", pid)
+				ipc.log(LogLevelDebug, "Server: ping from cli", pid)
 				continue
 			}
 
@@ -193,7 +191,6 @@ loop:
 			}
 		}
 	}
-
 }
 
 var (
@@ -201,7 +198,8 @@ var (
 )
 
 func (ipc *UdsIpc) servemain(listener net.Listener) {
-	fmt.Println(">>>>>>>>>>>>>>>>>>Main<<<<<<<<<<<<<<<<<<<<<<", os.Getpid())
+	ipc.log(LogLevelInfo, "run as main", os.Getpid())
+
 	ipc.ismain = true
 	clear(ipc.clis)
 
