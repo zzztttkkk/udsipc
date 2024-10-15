@@ -66,6 +66,10 @@ func (ipc *UdsIpc) asclient(c net.Conn) *IpcError {
 
 	fmt.Println("Cli Conn OK")
 
+	if ipc.opts.AfterHandshake != nil {
+		ipc.opts.AfterHandshake(ipc)
+	}
+
 	wpack := packpool.Get().(*pack)
 	defer packpool.Put(wpack)
 
