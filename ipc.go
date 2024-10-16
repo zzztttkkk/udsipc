@@ -109,6 +109,6 @@ func (ipc *UdsIpc) Run() {
 			continue
 		}
 		ace := ipc.asclient(c)
-		fmt.Println("ACE:", ace)
+		ipc.log(LogLevelError, "run failed", ace)
 	}
 }

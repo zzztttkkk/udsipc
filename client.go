@@ -31,6 +31,7 @@ func (ipc *UdsIpc) asclient(c net.Conn) *IpcError {
 	var lastpingat = time.Now().UnixMilli()
 	var max_ping_step = ipc.opts.PingStepInMills * 2
 	var ticker = time.NewTicker(time.Millisecond * time.Duration(ipc.opts.PingStepInMills))
+	defer ticker.Stop()
 
 	var readerrchan = make(chan error)
 

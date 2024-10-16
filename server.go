@@ -163,6 +163,8 @@ func (ipc *UdsIpc) serveclient(c net.Conn) {
 	}()
 
 	ticker := time.NewTicker(time.Millisecond * time.Duration(ipc.opts.PingStepInMills))
+	defer ticker.Stop()
+
 	max_ping_step := ipc.opts.PingStepInMills * 2
 
 loop:
