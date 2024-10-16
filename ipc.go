@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"os"
+	"path/filepath"
 	"reflect"
 	"sync"
 	"time"
@@ -53,6 +55,28 @@ func NewUnixIpc(opts UdsIpcOpts) *UdsIpc {
 		msgqueue: make(chan msginqueue),
 		clis:     map[int64]*IpcConnInMain{},
 	}
+}
+
+func IsSupported() bool {
+	var filename string
+
+	for {
+		filename = fmt.Sprintf("%d%d.sock", rand.Int63(), rand.Int63())
+		_, err := os.Stat(filepath.Join(os.TempDir(), filename))
+		if os.IsNotExist(err) {
+			break
+		}
+	}
+
+	fp := filepath.Join(os.TempDir(), filename)
+	defer os.Remove(fp)
+
+	serv, err := net.Listen("unix", fp)
+	if err != nil {
+		return false
+	}
+	serv.Close()
+	return true
 }
 
 func (*UdsIpc) registertype(typ reflect.Type) string {
